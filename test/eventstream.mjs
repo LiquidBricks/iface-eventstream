@@ -1,36 +1,108 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createEvent, eventstream, formatServerSentEvent } from '../index.js';
+import {
+  COMPONENT_SERVICE_SUBJECTS,
+  createEvent,
+  eventstream,
+  formatServerSentEvent,
+  parseComponentServiceSubject,
+} from '../index.js';
 
-test('createEvent returns one of the supported event types with the provided id', () => {
-  const registered = createEvent({ id: 7, random: () => 0 });
-  assert.equal(registered.id, 7);
-  assert.equal(registered.event, 'component.evt.registered');
-  assert.equal(registered.data.id, 7);
-  assert.equal(registered.data.payload.component.id, 'component-lorem');
+function createDiagnosticsSpy() {
+  return {
+    child() {
+      return this;
+    },
+    info() {},
+    warn() {},
+  };
+}
 
-  const started = createEvent({ id: 8, random: () => 0.99 });
-  assert.equal(started.event, 'componentInstance.evt.started');
-  assert.equal(started.data.payload.componentInstance.status, 'started');
+function createSubscription(messages) {
+  let closed = false;
+
+  return {
+    unsubscribe() {
+      closed = true;
+    },
+    async *[Symbol.asyncIterator]() {
+      for (const message of messages) {
+        if (closed) {
+          return;
+        }
+
+        yield message;
+      }
+    },
+  };
+}
+
+test('parseComponentServiceSubject maps component-service subject tokens', () => {
+  assert.deepEqual(
+    parseComponentServiceSubject('prod.component-service._._.evt.componentInstance.started.v1.instance-1'),
+    {
+      env: 'prod',
+      ns: 'component-service',
+      tenant: '_',
+      context: '_',
+      channel: 'evt',
+      entity: 'componentInstance',
+      action: 'started',
+      version: 'v1',
+      id: 'instance-1',
+    },
+  );
+});
+
+test('createEvent formats a NATS message as a component-service SSE event', () => {
+  const evt = createEvent({
+    id: 7,
+    now: () => new Date('2026-05-18T12:00:00.000Z'),
+    message: {
+      subject: 'prod.component-service._._.cmd.componentInstance.start.v1.instance-1',
+      reply: 'reply.subject',
+      json: () => ({ data: { instanceId: 'instance-1' } }),
+    },
+  });
+
+  assert.equal(evt.id, 7);
+  assert.equal(evt.event, 'component-service.cmd');
+  assert.equal(evt.data.subject, 'prod.component-service._._.cmd.componentInstance.start.v1.instance-1');
+  assert.equal(evt.data.receivedAt, '2026-05-18T12:00:00.000Z');
+  assert.equal(evt.data.tokens.channel, 'cmd');
+  assert.deepEqual(evt.data.payload, { data: { instanceId: 'instance-1' } });
 });
 
 test('formatServerSentEvent emits valid SSE fields', () => {
   const formatted = formatServerSentEvent({
     id: 3,
-    event: 'component.evt.registered',
-    data: { message: 'Lorem ipsum' },
+    event: 'component-service.evt',
+    data: { subject: 'prod.component-service._._.evt.component.registered.v1._' },
   });
 
   assert.equal(
     formatted,
-    'id: 3\nevent: component.evt.registered\ndata: {"message":"Lorem ipsum"}\n\n',
+    'id: 3\nevent: component-service.evt\ndata: {"subject":"prod.component-service._._.evt.component.registered.v1._"}\n\n',
   );
 });
 
-test('eventstream writes sequential ids', async () => {
+test('eventstream creates core NATS subscriptions and streams received messages', async () => {
   const writes = [];
   const listeners = new Map();
+  const subscribedSubjects = [];
+  const message = {
+    subject: 'prod.component-service._._.evt.component.registered.v1.component-1',
+    json: () => ({ data: { componentId: 'component-1' } }),
+  };
+  const natsContext = {
+    connection: async () => ({
+      subscribe(subject) {
+        subscribedSubjects.push(subject);
+        return createSubscription(subject.endsWith('.evt.>') ? [message] : []);
+      },
+    }),
+  };
   const response = {
     setHeader() {},
     flushHeaders() {},
@@ -43,13 +115,15 @@ test('eventstream writes sequential ids', async () => {
     },
   };
 
-  eventstream({ random: () => 0, maxDelayMs: 0 })({}, response);
+  eventstream({ natsContext, diagnostics: createDiagnosticsSpy() })({}, response);
 
   await new Promise((resolve) => setTimeout(resolve, 10));
   listeners.get('close')();
 
+  assert.deepEqual(subscribedSubjects, COMPONENT_SERVICE_SUBJECTS);
   const eventWrites = writes.filter((chunk) => chunk.startsWith('id: '));
-  assert.ok(eventWrites.length >= 2);
-  assert.match(eventWrites[0], /^id: 1\n/);
-  assert.match(eventWrites[1], /^id: 2\n/);
+  assert.equal(eventWrites.length, 1);
+  assert.match(eventWrites[0], /^id: 1\nevent: component-service\.evt\n/);
+  assert.match(eventWrites[0], /"subject":"prod\.component-service\._\._\.evt\.component\.registered\.v1\.component-1"/);
+  assert.match(eventWrites[0], /"componentId":"component-1"/);
 });
