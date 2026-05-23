@@ -19,12 +19,17 @@ function createDiagnosticsSpy() {
   };
 }
 
-function createSubscription(messages) {
+function createConsumerMessages(messages) {
   let closed = false;
+  let closeCount = 0;
 
   return {
-    unsubscribe() {
+    get closeCount() {
+      return closeCount;
+    },
+    async close() {
       closed = true;
+      closeCount += 1;
     },
     async *[Symbol.asyncIterator]() {
       for (const message of messages) {
@@ -87,19 +92,41 @@ test('formatServerSentEvent emits valid SSE fields', () => {
   );
 });
 
-test('eventstream creates core NATS subscriptions and streams received messages', async () => {
+test('eventstream creates an ephemeral JetStream consumer and streams received messages', async () => {
   const writes = [];
   const listeners = new Map();
-  const subscribedSubjects = [];
+  const addedConsumers = [];
+  const deletedConsumers = [];
+  const streamName = 'EVENTSTREAM_TEST_STREAM';
   const message = {
     subject: 'prod.component-service._._.evt.component.registerDone.v1.component-1',
     json: () => ({ data: { componentId: 'component-1' } }),
+    ackCount: 0,
+    ack() {
+      this.ackCount += 1;
+    },
   };
+  const consumerMessages = createConsumerMessages([message]);
   const natsContext = {
-    connection: async () => ({
-      subscribe(subject) {
-        subscribedSubjects.push(subject);
-        return createSubscription(subject.endsWith('.evt.>') ? [message] : []);
+    jetstreamManager: async () => ({
+      consumers: {
+        add(stream, configuration) {
+          addedConsumers.push({ stream, configuration });
+        },
+        delete(stream, consumerName) {
+          deletedConsumers.push({ stream, consumerName });
+        },
+      },
+    }),
+    jetstream: async () => ({
+      consumers: {
+        get: async (stream, consumerName) => ({
+          consume: async () => consumerMessages,
+          delete: async () => {
+            deletedConsumers.push({ stream, consumerName });
+            return true;
+          },
+        }),
       },
     }),
   };
@@ -115,15 +142,26 @@ test('eventstream creates core NATS subscriptions and streams received messages'
     },
   };
 
-  eventstream({ natsContext, diagnostics: createDiagnosticsSpy() })({}, response);
+  eventstream({ natsContext, diagnostics: createDiagnosticsSpy(), streamName })({}, response);
 
   await new Promise((resolve) => setTimeout(resolve, 10));
   listeners.get('close')();
+  await new Promise((resolve) => setTimeout(resolve, 10));
 
-  assert.deepEqual(subscribedSubjects, COMPONENT_SERVICE_SUBJECTS);
+  assert.equal(addedConsumers.length, 1);
+  assert.equal(addedConsumers[0].stream, streamName);
+  assert.match(addedConsumers[0].configuration.name, /^iface_eventstream_1_/);
+  assert.equal(addedConsumers[0].configuration.durable_name, undefined);
+  assert.equal(addedConsumers[0].configuration.ack_policy, 'explicit');
+  assert.equal(addedConsumers[0].configuration.deliver_policy, 'new');
+  assert.deepEqual(addedConsumers[0].configuration.filter_subjects, COMPONENT_SERVICE_SUBJECTS);
+
   const eventWrites = writes.filter((chunk) => chunk.startsWith('id: '));
   assert.equal(eventWrites.length, 1);
   assert.match(eventWrites[0], /^id: 1\nevent: component-service\.evt\n/);
   assert.match(eventWrites[0], /"subject":"prod\.component-service\._\._\.evt\.component\.registerDone\.v1\.component-1"/);
   assert.match(eventWrites[0], /"componentId":"component-1"/);
+  assert.equal(message.ackCount, 1);
+  assert.equal(consumerMessages.closeCount, 1);
+  assert.deepEqual(deletedConsumers, [{ stream: streamName, consumerName: addedConsumers[0].configuration.name }]);
 });
