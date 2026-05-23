@@ -40,7 +40,7 @@ function createSubscription(messages) {
 
 test('parseComponentServiceSubject maps component-service subject tokens', () => {
   assert.deepEqual(
-    parseComponentServiceSubject('prod.component-service._._.evt.componentInstance.started.v1.instance-1'),
+    parseComponentServiceSubject('prod.component-service._._.evt.componentInstance.startDone.v1.instance-1'),
     {
       env: 'prod',
       ns: 'component-service',
@@ -48,7 +48,7 @@ test('parseComponentServiceSubject maps component-service subject tokens', () =>
       context: '_',
       channel: 'evt',
       entity: 'componentInstance',
-      action: 'started',
+      action: 'startDone',
       version: 'v1',
       id: 'instance-1',
     },
@@ -78,12 +78,12 @@ test('formatServerSentEvent emits valid SSE fields', () => {
   const formatted = formatServerSentEvent({
     id: 3,
     event: 'component-service.evt',
-    data: { subject: 'prod.component-service._._.evt.component.registered.v1._' },
+    data: { subject: 'prod.component-service._._.evt.component.registerDone.v1._' },
   });
 
   assert.equal(
     formatted,
-    'id: 3\nevent: component-service.evt\ndata: {"subject":"prod.component-service._._.evt.component.registered.v1._"}\n\n',
+    'id: 3\nevent: component-service.evt\ndata: {"subject":"prod.component-service._._.evt.component.registerDone.v1._"}\n\n',
   );
 });
 
@@ -92,7 +92,7 @@ test('eventstream creates core NATS subscriptions and streams received messages'
   const listeners = new Map();
   const subscribedSubjects = [];
   const message = {
-    subject: 'prod.component-service._._.evt.component.registered.v1.component-1',
+    subject: 'prod.component-service._._.evt.component.registerDone.v1.component-1',
     json: () => ({ data: { componentId: 'component-1' } }),
   };
   const natsContext = {
@@ -124,6 +124,6 @@ test('eventstream creates core NATS subscriptions and streams received messages'
   const eventWrites = writes.filter((chunk) => chunk.startsWith('id: '));
   assert.equal(eventWrites.length, 1);
   assert.match(eventWrites[0], /^id: 1\nevent: component-service\.evt\n/);
-  assert.match(eventWrites[0], /"subject":"prod\.component-service\._\._\.evt\.component\.registered\.v1\.component-1"/);
+  assert.match(eventWrites[0], /"subject":"prod\.component-service\._\._\.evt\.component\.registerDone\.v1\.component-1"/);
   assert.match(eventWrites[0], /"componentId":"component-1"/);
 });
