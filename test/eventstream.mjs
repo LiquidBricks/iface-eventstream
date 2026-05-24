@@ -1,13 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  COMPONENT_SERVICE_SUBJECTS,
-  createEvent,
-  eventstream,
-  formatServerSentEvent,
-  parseComponentServiceSubject,
-} from '../index.js';
+import { eventstream } from '../index.js';
+import { createEvent } from '../src/events.js';
+import { formatServerSentEvent } from '../src/sse.js';
+import { parseComponentServiceSubject } from '../src/subjects.js';
+
+const TEST_COMPONENT_SERVICE_SUBJECTS = [
+  'prod.component-service.*.*.cmd.>',
+  'prod.component-service.*.*.evt.>',
+  'prod.component-service.*.*.exec.>',
+];
 
 function createDiagnosticsSpy() {
   return {
@@ -42,6 +45,12 @@ function createConsumerMessages(messages) {
     },
   };
 }
+
+test('public entrypoint exports only eventstream', async () => {
+  const exportedNames = Object.keys(await import('../index.js')).sort();
+
+  assert.deepEqual(exportedNames, ['eventstream']);
+});
 
 test('parseComponentServiceSubject maps component-service subject tokens', () => {
   assert.deepEqual(
@@ -142,7 +151,12 @@ test('eventstream creates an ephemeral JetStream consumer and streams received m
     },
   };
 
-  eventstream({ natsContext, diagnostics: createDiagnosticsSpy(), streamName })({}, response);
+  eventstream({
+    natsContext,
+    diagnostics: createDiagnosticsSpy(),
+    streamName,
+    subjects: TEST_COMPONENT_SERVICE_SUBJECTS,
+  })({}, response);
 
   await new Promise((resolve) => setTimeout(resolve, 10));
   listeners.get('close')();
@@ -154,7 +168,7 @@ test('eventstream creates an ephemeral JetStream consumer and streams received m
   assert.equal(addedConsumers[0].configuration.durable_name, undefined);
   assert.equal(addedConsumers[0].configuration.ack_policy, 'explicit');
   assert.equal(addedConsumers[0].configuration.deliver_policy, 'new');
-  assert.deepEqual(addedConsumers[0].configuration.filter_subjects, COMPONENT_SERVICE_SUBJECTS);
+  assert.deepEqual(addedConsumers[0].configuration.filter_subjects, TEST_COMPONENT_SERVICE_SUBJECTS);
 
   const eventWrites = writes.filter((chunk) => chunk.startsWith('id: '));
   assert.equal(eventWrites.length, 1);

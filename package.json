@@ -9,7 +9,8 @@
     "./eventstream": "./index.js"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "src"
   ],
   "scripts": {
     "test": "node --test \"test/**/*.mjs\""
