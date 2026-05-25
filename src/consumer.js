@@ -1,6 +1,6 @@
 import {
   ACK_POLICY_EXPLICIT,
-  DELIVER_POLICY_NEW,
+  DELIVER_POLICY_ALL,
   EPHEMERAL_INACTIVE_THRESHOLD_NANOS,
 } from './constants.js';
 
@@ -39,7 +39,7 @@ export async function createEphemeralConsumer({
     await jetstreamManager.consumers.add(streamName, {
       name: consumerName,
       ack_policy: ACK_POLICY_EXPLICIT,
-      deliver_policy: DELIVER_POLICY_NEW,
+      deliver_policy: DELIVER_POLICY_ALL,
       filter_subjects: subjects,
       inactive_threshold: EPHEMERAL_INACTIVE_THRESHOLD_NANOS,
     });

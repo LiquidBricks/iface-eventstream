@@ -101,7 +101,7 @@ test('formatServerSentEvent emits valid SSE fields', () => {
   );
 });
 
-test('eventstream creates an ephemeral JetStream consumer and streams received messages', async () => {
+test('eventstream creates an ephemeral JetStream consumer and replays retained messages and streams received messages', async () => {
   const writes = [];
   const listeners = new Map();
   const addedConsumers = [];
@@ -167,7 +167,7 @@ test('eventstream creates an ephemeral JetStream consumer and streams received m
   assert.match(addedConsumers[0].configuration.name, /^iface_eventstream_1_/);
   assert.equal(addedConsumers[0].configuration.durable_name, undefined);
   assert.equal(addedConsumers[0].configuration.ack_policy, 'explicit');
-  assert.equal(addedConsumers[0].configuration.deliver_policy, 'new');
+  assert.equal(addedConsumers[0].configuration.deliver_policy, 'all');
   assert.deepEqual(addedConsumers[0].configuration.filter_subjects, TEST_COMPONENT_SERVICE_SUBJECTS);
 
   const eventWrites = writes.filter((chunk) => chunk.startsWith('id: '));
