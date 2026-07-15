@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { eventstream } from '../index.js';
 import { createEvent } from '../src/events.js';
 import { formatServerSentEvent } from '../src/sse.js';
-import { parseComponentServiceSubject } from '../src/subjects.js';
+import { parseComponentServiceSubject, parseNatsSubject } from '../src/subjects.js';
 
 const TEST_COMPONENT_SERVICE_SUBJECTS = [
   'prod.component-service.*.*.cmd.>',
@@ -69,6 +69,23 @@ test('parseComponentServiceSubject maps component-service subject tokens', () =>
   );
 });
 
+test('parseNatsSubject maps domain subject tokens and retains the component-service parser alias', () => {
+  const subject = 'prod.domain._._.vertex.stateMachine.completed.v1.instance-1';
+
+  assert.deepEqual(parseNatsSubject(subject), {
+    env: 'prod',
+    ns: 'domain',
+    tenant: '_',
+    context: '_',
+    channel: 'vertex',
+    entity: 'stateMachine',
+    action: 'completed',
+    version: 'v1',
+    id: 'instance-1',
+  });
+  assert.deepEqual(parseComponentServiceSubject(subject), parseNatsSubject(subject));
+});
+
 test('createEvent formats a NATS message as a component-service SSE event', () => {
   const evt = createEvent({
     id: 7,
@@ -86,6 +103,38 @@ test('createEvent formats a NATS message as a component-service SSE event', () =
   assert.equal(evt.data.receivedAt, '2026-05-18T12:00:00.000Z');
   assert.equal(evt.data.tokens.channel, 'cmd');
   assert.deepEqual(evt.data.payload, { data: { instanceId: 'instance-1' } });
+});
+
+test('createEvent uses the NATS namespace and channel for domain SSE event names', () => {
+  const evt = createEvent({
+    id: 8,
+    now: () => new Date('2026-05-18T12:00:01.000Z'),
+    message: {
+      subject: 'prod.domain._._.vertex.stateMachine.completed.v1.instance-1',
+      json: () => ({ data: { instanceId: 'instance-1' } }),
+    },
+  });
+
+  assert.equal(evt.event, 'domain.vertex');
+  assert.equal(evt.data.namespace, 'domain');
+  assert.equal(evt.data.channel, 'vertex');
+  assert.equal(evt.data.tokens.entity, 'stateMachine');
+  assert.equal(evt.data.tokens.action, 'completed');
+  assert.deepEqual(evt.data.payload, { data: { instanceId: 'instance-1' } });
+});
+
+test('createEvent preserves the existing component-service SSE name for gateway messages', () => {
+  const evt = createEvent({
+    id: 9,
+    message: {
+      subject: 'prod.gateway._._.cmd.component.compute_function.v1._',
+      json: () => ({ data: { instanceId: 'instance-1' } }),
+    },
+  });
+
+  assert.equal(evt.event, 'component-service.cmd');
+  assert.equal(evt.data.namespace, 'gateway');
+  assert.equal(evt.data.channel, 'cmd');
 });
 
 test('formatServerSentEvent emits valid SSE fields', () => {

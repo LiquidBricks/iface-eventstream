@@ -10,7 +10,7 @@ const SUBJECT_TOKEN_NAMES = [
   'id',
 ];
 
-export function parseComponentServiceSubject(subject) {
+export function parseNatsSubject(subject) {
   const parts = String(subject ?? '').split('.');
   const tokens = SUBJECT_TOKEN_NAMES.reduce((acc, tokenName, index) => {
     acc[tokenName] = parts[index] ?? '';
@@ -24,3 +24,5 @@ export function parseComponentServiceSubject(subject) {
 
   return tokens;
 }
+
+export const parseComponentServiceSubject = parseNatsSubject;

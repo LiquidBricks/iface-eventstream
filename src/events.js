@@ -1,4 +1,4 @@
-import { parseComponentServiceSubject } from './subjects.js';
+import { parseNatsSubject } from './subjects.js';
 
 function decodeMessagePayload(message) {
   try {
@@ -19,9 +19,11 @@ function decodeMessagePayload(message) {
 }
 
 export function createEvent({ id, message, now = () => new Date() }) {
-  const tokens = parseComponentServiceSubject(message.subject);
+  const tokens = parseNatsSubject(message.subject);
+  const namespace = tokens.ns || 'component-service';
   const channel = tokens.channel || 'message';
-  const event = `component-service.${channel}`;
+  const eventNamespace = namespace === 'domain' ? namespace : 'component-service';
+  const event = `${eventNamespace}.${channel}`;
 
   return {
     id,
@@ -32,6 +34,7 @@ export function createEvent({ id, message, now = () => new Date() }) {
       receivedAt: now().toISOString(),
       subject: message.subject,
       reply: message.reply || undefined,
+      namespace,
       channel,
       tokens,
       payload: decodeMessagePayload(message),
