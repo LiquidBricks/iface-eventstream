@@ -15,5 +15,8 @@
   "scripts": {
     "test": "node --test \"test/**/*.mjs\""
   },
+  "dependencies": {
+    "@liquid-bricks/lib-diagnostics": "github:LiquidBricks/lib-diagnostics#2eb9d8e992f1fa656386877c8ff65adbdd2f651e"
+  },
   "license": "ISC"
 }

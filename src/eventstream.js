@@ -1,3 +1,4 @@
+import { EVENTSTREAM_CONSUMER_ERROR } from '@liquid-bricks/lib-diagnostics/codes';
 import { COMPONENT_SERVICE_SUBJECT_PATTERN } from './constants.js';
 import { createConsumerName, createEphemeralConsumer, removeConsumer } from './consumer.js';
 import { safeDiagnostics } from './diagnostics.js';
@@ -44,7 +45,7 @@ export function eventstream({
     };
 
     const reportError = (error) => {
-      diagnostics.warn(false, 'EVENTSTREAM_CONSUMER_ERROR', 'eventstream consumer error', {
+      diagnostics.warn(false, EVENTSTREAM_CONSUMER_ERROR, 'eventstream consumer error', {
         error: String(error?.stack || error),
         subjects,
       });

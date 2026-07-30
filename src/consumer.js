@@ -1,3 +1,5 @@
+import { EVENTSTREAM_CONSUMER_DELETE_ERROR } from '@liquid-bricks/lib-diagnostics/codes';
+
 import {
   ACK_POLICY_EXPLICIT,
   DELIVER_POLICY_ALL,
@@ -83,7 +85,7 @@ export async function removeConsumer(record, diagnostics) {
       // Best-effort cleanup for an already-closing ephemeral consumer.
     }
 
-    diagnostics.warn(false, 'EVENTSTREAM_CONSUMER_DELETE_ERROR', 'eventstream consumer cleanup error', {
+    diagnostics.warn(false, EVENTSTREAM_CONSUMER_DELETE_ERROR, 'eventstream consumer cleanup error', {
       consumerName: record.name,
       error: String(error?.stack || error),
     });
